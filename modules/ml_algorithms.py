@@ -105,7 +105,7 @@
 # if __name__ == "__main__":
 #     suggest_ml_algorithms()
 
-
+'''
 
 import streamlit as st
 import pandas as pd
@@ -283,6 +283,166 @@ def get_ml_suggestions(data):
         "description": dataset_description,
         "constraints": constraints,
         "ml_suggestions": ml_recommendations
+    }
+
+'''
+
+import streamlit as st
+import pandas as pd
+import google.generativeai as genai
+
+# --------------------------------------------------
+# GEMINI CONFIGURATION (STREAMLIT CLOUD SAFE)
+# --------------------------------------------------
+
+# IMPORTANT:
+# Add this in Streamlit Cloud → App → Settings → Secrets
+# GOOGLE_API_KEY = "AIzaSyXXXXXXX"
+
+if "GOOGLE_API_KEY" not in st.secrets:
+    st.error("Gemini API key not found. Please add GOOGLE_API_KEY to Streamlit secrets.")
+    st.stop()
+
+genai.configure(api_key='AIzaSyCttibuV1gy1fRUQsGYy7-2clAhSJeUyD0')
+
+# Initialize Gemini model ONCE
+model = genai.GenerativeModel(
+    "models/gemini-1.5-flash",
+    generation_config={
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "max_output_tokens": 1000,
+    }
+)
+
+# --------------------------------------------------
+# HELPER FUNCTIONS
+# --------------------------------------------------
+
+def generate_dataset_description(headers, sample_row):
+    """Generate dataset description using Gemini."""
+    prompt = (
+        f"The dataset has the following columns: {', '.join(headers)}.\n"
+        f"Here is a sample row: {sample_row}.\n\n"
+        "Describe the dataset's purpose, potential use cases, and key characteristics."
+    )
+
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"⚠️ Gemini error while generating description: {str(e)}"
+
+
+def recommend_ml_algorithms(description, data_shape, constraints):
+    """Recommend ML algorithms using Gemini."""
+    prompt = (
+        f"Dataset description:\n{description}\n\n"
+        f"Dataset shape: {data_shape[0]} rows, {data_shape[1]} columns\n"
+        f"Constraints: {constraints}\n\n"
+        "Recommend suitable machine learning algorithms. "
+        "Explain why they fit and what outcomes they can achieve."
+    )
+
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"⚠️ Gemini error while recommending algorithms: {str(e)}"
+
+
+# --------------------------------------------------
+# STREAMLIT UI FUNCTION
+# --------------------------------------------------
+
+def suggest_ml_algorithms(data: pd.DataFrame):
+    """Streamlit UI for dataset analysis and ML recommendations."""
+
+    st.title("📊 Dataset Analysis & ML Algorithm Suggestions")
+
+    if data.empty:
+        st.warning("Uploaded dataset is empty.")
+        return
+
+    # Dataset preview
+    st.subheader("Dataset Preview")
+    st.dataframe(data.head())
+
+    # Dataset description
+    headers = list(data.columns)
+    sample_row = data.iloc[0].to_dict()
+
+    st.subheader("Dataset Description")
+    description = generate_dataset_description(headers, sample_row)
+    st.write(description)
+
+    # Dataset constraints
+    constraints = {
+        "data_spread": (
+            "High variability"
+            if not data.select_dtypes(include="number").empty
+            and data.select_dtypes(include="number").std().mean() > 1
+            else "Low variability"
+        ),
+        "memory": "Limited" if len(data) > 100_000 else "Sufficient",
+        "feasibility": "Small" if data.shape[1] < 10 else "Large",
+    }
+
+    st.subheader("Dataset Constraints")
+    st.json(constraints)
+
+    # ML recommendations
+    st.subheader("Recommended Machine Learning Algorithms")
+    recommendations = recommend_ml_algorithms(
+        description=description,
+        data_shape=data.shape,
+        constraints=constraints,
+    )
+    st.write(recommendations)
+
+
+# --------------------------------------------------
+# PROGRAMMATIC (NON-UI) FUNCTION
+# --------------------------------------------------
+
+def get_ml_suggestions(data: pd.DataFrame) -> dict:
+    """
+    Backend-friendly ML suggestion generator (no Streamlit UI).
+    """
+
+    if data.empty:
+        return {
+            "description": "Dataset is empty.",
+            "constraints": {},
+            "ml_suggestions": "No data available for analysis.",
+        }
+
+    headers = list(data.columns)
+    sample_row = data.iloc[0].to_dict()
+
+    description = generate_dataset_description(headers, sample_row)
+
+    constraints = {
+        "data_spread": (
+            "High variability"
+            if not data.select_dtypes(include="number").empty
+            and data.select_dtypes(include="number").std().mean() > 1
+            else "Low variability"
+        ),
+        "memory": "Limited" if len(data) > 100_000 else "Sufficient",
+        "feasibility": "Small" if data.shape[1] < 10 else "Large",
+    }
+
+    ml_suggestions = recommend_ml_algorithms(
+        description=description,
+        data_shape=data.shape,
+        constraints=constraints,
+    )
+
+    return {
+        "description": description,
+        "constraints": constraints,
+        "ml_suggestions": ml_suggestions,
     }
 
 
